@@ -20,9 +20,12 @@
 
 //Adding variables with SSID/Password Combination
 const char* ssid = ""
-const ch
+const char* password = ""
 
-//Declaration of the DNS server used to direct web traffic to right location
+void notFound(AsyncWebServerRequest *request) {
+    request->send(404, "text/plain", "Not found");
+}
+
 DNSServer dnsServer;
 //Declaration of the server used to handle web requests. The port 80 is passed. 
 //Most websites use port 80 for HTML webpages that you view on your phone/computer etc.
@@ -169,39 +172,6 @@ void globalHandleRequest(AsyncWebServerRequest *request){
   request->send(200,"text/html",getHTML()); 
 }
 
-/**
- * This is an extension of the AsyncWebHandler class which is used to process web requests.
- * The purpose of extending this and the reason it is called CaptiveRequestHandler is because
- * this "handler" is called only when you first connect to the WiFi network, similar to the UTTyler
- * WiFi login page. This is called a captive request and is performed on a specific ip address. 
- * In this case captive requests are treated the same as generic requests and will refer to the same
- * globalHandleRequest method. 
- */
-struct CaptiveRequestHandler : public AsyncWebHandler{//Extend class as public struct
-
-  CaptiveRequestHandler(){}//Default constructor; empty
-
-  virtual ~CaptiveRequestHandler(){}//Default destructor, no memory was allocated so it's empty
-
-  /**
-   * Returns true if the ESP32 can handle a new request and false if it is busy
-   * @param request pointer to web request object with request info
-   * @return true 
-   */
-  bool canHandle(AsyncWebServerRequest *request){
-    //We will always be able to handle the request because the device isn't doing anything in bckgnd
-    return true;
-  }
-
-  /**
-   * Called when the request is to be handled
-   * @param request pointer to web request object with request info
-   */
-  void handleRequest(AsyncWebServerRequest *request){
-    globalHandleRequest(request);//Use the global handler
-  }
-};
-
 //This method is called once during the start of the program
 void setup(){
   Serial.begin(115200);//Start Serial. BTW Most devices use this baud rate and not 9600
@@ -212,9 +182,15 @@ void setup(){
 
   Serial.println("Setting up AP Mode");
   WiFi.mode(WIFI_AP);//AP stands for Access Point and it basically turns the ESP32 into a "router"
-  WiFi.softAP(ap_name);//Start the "router" with the display name of the network passed
-  //Print the IP address of the web page hosted on the ESP32. Use this if the captive doesnt work
-  Serial.print("AP IP address: ");Serial.println(WiFi.softAPIP());
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+      Serial.printf("WiFi Failed!\n");
+      return;
+  }
+
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
 
   Serial.println("Setting up Async WebServer");
   /**
@@ -230,18 +206,7 @@ void setup(){
       globalHandleRequest(request);//Use the global handler
   });
 
-  Serial.println("Starting DNS Server");
-  /**
-   * A DNS or domain name server is what the internet uses to go between named URLs such as 
-   * google.com and 216.239.32.0 for example. In this case the captive request is made at 53
-   * and is passed to the IP address of our web handler. Its kind of like a map for the client
-   * so they can get to the right location on the web.
-   */ 
-  dnsServer.start(53,"*",WiFi.softAPIP());
-
-  //Here we add the captive handler for when a new client connects and requests the login page
-  server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);
-
+  server.onNotFound(notFound);
   server.begin();//Start the server and begin listening for requests
 }
 
